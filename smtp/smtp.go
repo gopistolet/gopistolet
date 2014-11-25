@@ -98,20 +98,95 @@ func (conn *Conn) serve() error {
 	
 			case "MAIL": {
 				// MAIL FROM:<sender@example.com>
+				
 				conn.from = parseFROM(args)
-				log.Printf("    > From: %s", conn.from)
-				fmt.Fprintf(conn.c, "250 OK\n")
+				
+				// Check if we can parse the params
+				if conn.from == "" {
+					fmt.Fprintf(conn.c, "501 Could not parse params\n")
+					log.Printf("    > Could not parse email")
+				} else {
+					log.Printf("    > From: %s", conn.from)
+					fmt.Fprintf(conn.c, "250 OK\n")
+				}
+				
 			}
 			
 			case "RCPT": {
 				// RCPT TO:<sender@example.com>
-				conn.to = append(conn.to, parseTO(args))
-				log.Printf("    > To: %s", conn.to)
-				fmt.Fprintf(conn.c, "250 OK\n")
+				
+				rcpt := parseTO(args)
+				
+				// Check if we can parse the params
+				if rcpt == "" {
+					fmt.Fprintf(conn.c, "501 Could not parse params\n")
+					log.Printf("    > Could not parse email")
+				} else {
+					conn.to = append(conn.to, rcpt)
+					log.Printf("    > To: %s", rcpt)
+					fmt.Fprintf(conn.c, "250 OK\n")
+				}
+				
+					/*
+					RFC 5321:
+					
+					The minimum total number of recipients that MUST be buffered is 100
+					recipients.  Rejection of messages (for excessive recipients) with
+					fewer than 100 RCPT commands is a violation of this specification.
+					The general principle that relaying SMTP server MUST NOT, and
+					delivery SMTP servers SHOULD NOT, perform validation tests on message
+					header fields suggests that messages SHOULD NOT be rejected based on
+					the total number of recipients shown in header fields.  A server that
+					imposes a limit on the number of recipients MUST behave in an orderly
+					fashion, such as rejecting additional addresses over its limit rather
+					than silently discarding addresses previously accepted.  A client
+					that needs to deliver a message containing over 100 RCPT commands
+					SHOULD be prepared to transmit in 100-recipient "chunks" if the
+					server declines to accept more than 100 recipients in a single
+					message.
+					
+						452 Too many recipients
+					*/
+				
+				
+				// TODO check if  email exists on our server
+					/*
+					RFC 821
+					
+					If the recipient is unknown the
+					receiver-SMTP returns a 550 Failure reply.
+					
+					There are some cases where the destination information in the
+					<forward-path> is incorrect, but the receiver-SMTP knows the
+					correct destination.  In such cases, one of the following replies
+					should be used to allow the sender to contact the correct
+					destination.
+					
+					   251 User not local; will forward to <forward-path>
+					
+						  This reply indicates that the receiver-SMTP knows the user's
+						  mailbox is on another host and indicates the correct
+						  forward-path to use in the future.  Note that either the
+						  host or user or both may be different.  The receiver takes
+						  responsibility for delivering the message.
+					
+					   551 User not local; please try <forward-path>
+					
+						  This reply indicates that the receiver-SMTP knows the user's
+						  mailbox is on another host and indicates the correct
+						  forward-path to use.  Note that either the host or user or
+						  both may be different.  The receiver refuses to accept mail
+						  for this user, and the sender must either redirect the mail
+						  according to the information provided or return an error
+						  response to the originating user.
+					*/
+				
+				
 			}
 			
 			case "DATA": {
 				// Read data until ending '.' line.
+				fmt.Fprintf(conn.c, "354 Accepting mail input\n")
 				
 				for {
 					
@@ -119,13 +194,33 @@ func (conn *Conn) serve() error {
 					
 					log.Printf("    > (%d) %q", len(data), data)
 					
-					if data == ".\r\n" {
+					if data == ".\r\n" || data == ".\r" || data == ".\n" {
 						log.Printf("    > END")
 						break
 					} else {
 						conn.msg = append(conn.msg, []byte(data)...)
 						continue
 					}
+					
+					// TODO break when there is no more content
+					// TODO check for content too long
+						/*
+						RFC 5321:
+						
+						The maximum total length of a message content (including any message
+						header section as well as the message body) MUST BE at least 64K
+						octets.  Since the introduction of Internet Standards for multimedia
+						mail (RFC 2045 [21]), message lengths on the Internet have grown
+						dramatically, and message size restrictions should be avoided if at
+						all possible.  SMTP server systems that must impose restrictions
+						SHOULD implement the "SIZE" service extension of RFC 1870 [10], and
+						SMTP client systems that will send large messages SHOULD utilize it
+						when possible.
+						
+						552 Too much mail data
+						*/
+					
+					// TODO check for time out while waiting (this might also be needed for the whole connection)
 					
 				}
 				
@@ -140,11 +235,20 @@ func (conn *Conn) serve() error {
 				conn.from = "";
 				conn.to = make([]string, 0)
 				conn.msg = make([]byte, 0)
+				fmt.Fprintf(conn.c, "250 OK\n")
 			}
 			
-			case "VRFY": {
-				// placeholder
-				fmt.Fprintf(conn.c, "502 Command not implemented\n")	
+			case "VRFY", "EXPN": {
+				// Additional commands
+				fmt.Fprintf(conn.c, "502 not implemented\n")
+					/*
+					RFC 821
+					
+					SMTP provides as additional features, commands to verify a user
+					name or expand a mailing list.  This is done with the VRFY and
+					EXPN commands
+					*/
+				
 			}
 			
 			case "NOOP": {
@@ -155,7 +259,7 @@ func (conn *Conn) serve() error {
 			case "QUIT": {
 				// Close connection
 				log.Printf("    > Closing connection")
-				fmt.Fprintf(conn.c, "221 QUIT\n")
+				fmt.Fprintf(conn.c, "221 Bye!\n")
 				return nil
 			}
 	
@@ -163,6 +267,15 @@ func (conn *Conn) serve() error {
 				fmt.Fprintf(conn.c, "500 ERROR\n")
 				log.Printf("    > Unsupported command: '%s'", verb)
 			}
+	
+			
+				/*
+				RFC 5321
+				
+				The maximum total length of a reply line including the reply code and
+				the <CRLF> is 512 octets.  More information may be conveyed through
+				multiple-line replies.
+				*/
 	
 		}
 		
@@ -181,13 +294,29 @@ func parseLine(line string) (verb string, args string) {
 	verb = strings.ToUpper(line[:i])
 	args = strings.TrimSpace(line[i+1 : len(line)])
 	return
+	
+		/*
+		RFC 5321
+		
+		The maximum total length of a text line including the <CRLF> is 1000
+		octets (not counting the leading dot duplicated for transparency).
+		This number may be increased by the use of SMTP Service Extensions.
+		
+		--
+		
+		The maximum total length of a command line including the command word
+		and the <CRLF> is 512 octets.  SMTP extensions may be used to
+		increase this limit.
+		
+			500 Line too long
+		*/
 }
 
 
 // some regexes we don't want to compile for each request
 var (
-	fromRegex = regexp.MustCompile(`FROM:<(.+@.+)>`)
-	toRegex = regexp.MustCompile(`TO:<(.+@.+)>`)
+	fromRegex = regexp.MustCompile(`[Ff][Rr][Oo][Mm]:[\ ]?<(.+@.+)>`)
+	toRegex = regexp.MustCompile(`[Tt][Oo]:<(.+@.+)>.*`)
 )
 
 func parseFROM(line string) string {
@@ -213,3 +342,10 @@ func parseTO(line string) string {
 	}
 
 }
+
+	/*
+	RFC 5321
+	
+	The maximum total length of a domain name or number is 255 octets.
+	*/
+
