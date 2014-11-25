@@ -173,12 +173,12 @@ func (conn *Conn) serve() error {
 func parseLine(line string) (verb string, args string) {
 	i := strings.Index(line, " ")
 	if i == -1 {
-		verb = strings.ToUpper(line)
+		verb = strings.ToUpper(strings.TrimSpace(line))
 		return
 	}
 
 	verb = strings.ToUpper(line[:i])
-	args = line[i+1 : len(line)]
+	args = strings.TrimSpace(line[i+1 : len(line)])
 	return
 }
 
