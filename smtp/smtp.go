@@ -94,6 +94,18 @@ func (conn *Conn) serve() error {
 				// Initiate (extended) SMTP conversation
 				log.Printf("    > Extended SMTP request from %s", args)
 				conn.write(502, "Command not implemented")
+				
+					/*
+					RFC 5321
+					
+					An EHLO command MAY be issued by a client later in the session.  If
+					it is issued after the session begins and the EHLO command is
+					acceptable to the SMTP server, the SMTP server MUST clear all buffers
+					and reset the state exactly as if a RSET command had been issued.  In
+					other words, the sequence of RSET followed immediately by EHLO is
+					redundant, but not harmful other than in the performance cost of
+					executing unnecessary commands.
+					*/
 			}
 
 		case "MAIL":
@@ -191,6 +203,41 @@ func (conn *Conn) serve() error {
 						  for this user, and the sender must either redirect the mail
 						  according to the information provided or return an error
 						  response to the originating user.
+						  
+					
+					RFC 5321
+						  
+					When an SMTP server receives a message for delivery or further
+					processing, it MUST insert trace ("time stamp" or "Received")
+					information at the beginning of the message content, as discussed in
+					Section 4.1.1.4.
+					
+					This line MUST be structured as follows:
+					
+					o  The FROM clause, which MUST be supplied in an SMTP environment,
+					   SHOULD contain both (1) the name of the source host as presented
+					   in the EHLO command and (2) an address literal containing the IP
+					   address of the source, determined from the TCP connection.
+					
+					o  The ID clause MAY contain an "@" as suggested in RFC 822, but this
+					   is not required.
+					
+					o  If the FOR clause appears, it MUST contain exactly one <path>
+					   entry, even when multiple RCPT commands have been given.  Multiple
+					   <path>s raise some security issues and have been deprecated, see
+					   Section 7.2.
+					   
+					---
+					
+					Any system that includes an SMTP server supporting mail relaying or
+					delivery MUST support the reserved mailbox "postmaster" as a case-
+					insensitive local name.  This postmaster address is not strictly
+					necessary if the server always returns 554 on connection opening (as
+					described in Section 3.1).  The requirement to accept mail for
+					postmaster implies that RCPT commands that specify a mailbox for
+					postmaster at any of the domains for which the SMTP server provides
+					mail service, as well as the special case of "RCPT TO:<Postmaster>"
+					(with no domain specification), MUST be supported.
 				*/
 
 			}
@@ -239,6 +286,24 @@ func (conn *Conn) serve() error {
 						when possible.
 
 						552 Too much mail data
+						
+						---
+						
+						Without some provision for data transparency, the character sequence
+						"<CRLF>.<CRLF>" ends the mail text and cannot be sent by the user.
+						In general, users are not aware of such "forbidden" sequences.  To
+						allow all user composed text to be transmitted transparently, the
+						following procedures are used:
+						
+						o  Before sending a line of mail text, the SMTP client checks the
+						   first character of the line.  If it is a period, one additional
+						   period is inserted at the beginning of the line.
+						
+						o  When a line of mail text is received by the SMTP server, it checks
+						   the line.  If the line is composed of a single period, it is
+						   treated as the end of mail indicator.  If the first character is a
+						   period and there are other characters on the line, the first
+						   character is deleted.
 					*/
 
 					// TODO check for time out while waiting (this might also be needed for the whole connection)
@@ -271,6 +336,11 @@ func (conn *Conn) serve() error {
 					EXPN commands
 				*/
 
+			}
+			
+		case "SEND", "SOML", "SAML": {
+				// Obsolete
+				conn.write(502, "Command not implemented")
 			}
 
 		case "NOOP":
