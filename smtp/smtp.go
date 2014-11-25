@@ -86,7 +86,7 @@ func (conn *Conn) serve() error {
 			{
 				// Initiate SMTP conversation
 				log.Printf("    > SMTP request from %s", args)
-				conn.write(250, "OK")
+				conn.write(250, "GoPistolet")
 			}
 
 		case "EHLO":
@@ -99,6 +99,12 @@ func (conn *Conn) serve() error {
 		case "MAIL":
 			{
 				// MAIL FROM:<sender@example.com>
+
+				if conn.from != "" {
+					log.Printf("    > MAIL FROM already specified: %s", conn.from)
+					conn.write(503, "Sender already specified")
+					break
+				}
 
 				conn.from = parseFROM(args)
 
@@ -226,17 +232,16 @@ func (conn *Conn) serve() error {
 				}
 
 				log.Printf("    > Data: %s", conn.msg)
-				conn.write(250, "OK")
+				// TODO: Handle email
 
+				// Reset our state so a new MAIL command can be executed
+				conn.reset()
+				conn.write(250, "OK")
 			}
 
 		case "RSET":
 			{
-				// reset all sent information
-				// don't close connection!
-				conn.from = ""
-				conn.to = make([]string, 0)
-				conn.msg = make([]byte, 0)
+				conn.reset()
 				conn.write(250, "OK")
 			}
 
@@ -291,6 +296,12 @@ func (conn *Conn) serve() error {
 
 func (conn *Conn) write(code int, str string) {
 	fmt.Fprintf(conn.c, "%d %s\r\n", code, str)
+}
+
+func (conn *Conn) reset() {
+	conn.from = ""
+	conn.to = make([]string, 0)
+	conn.msg = make([]byte, 0)
 }
 
 func parseLine(line string) (verb string, args string) {
