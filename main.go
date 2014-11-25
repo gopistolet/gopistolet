@@ -1,6 +1,6 @@
 package main
 
-import "GoPistolet/smtp"
+import "gopistolet/smtp"
 
 func main() {
 	s := smtp.Server{Addr: ":1024"}
