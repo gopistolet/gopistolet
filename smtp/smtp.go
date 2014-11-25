@@ -130,6 +130,7 @@ func (conn *Conn) serve() error {
 				}
 				
 				log.Printf("    > Data: %s", conn.msg)
+				fmt.Fprintf(conn.c, "250 OK\n")
 				
 			}
 			
