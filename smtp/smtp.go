@@ -123,6 +123,11 @@ func (conn *Conn) serve() error {
 			{
 				// RCPT TO:<sender@example.com>
 
+				if conn.from == "" {
+					conn.write(503, "Need MAIL before RCPT")
+					break
+				}
+
 				rcpt := parseTO(args)
 
 				// Check if we can parse the params
@@ -192,6 +197,15 @@ func (conn *Conn) serve() error {
 
 		case "DATA":
 			{
+				if conn.from == "" {
+					conn.write(503, "Need MAIL before DATA")
+					break
+				}
+
+				if len(conn.to) < 1 {
+					conn.write(503, "Need RCPT before DATA")
+				}
+
 				// Read data until ending '.' line.
 				conn.write(354, "Accepting mail input")
 
