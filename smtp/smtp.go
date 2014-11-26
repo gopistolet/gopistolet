@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+
 type Handler func()
 
 type Server struct {
@@ -60,8 +61,8 @@ func (srv *Server) newConn(c net.Conn) *Conn {
 type Conn struct {
 	c net.Conn
 
-	from string
-	to   []string
+	from *MailAddress
+	to   []MailAddress
 	msg  []byte
 }
 
@@ -112,22 +113,35 @@ func (conn *Conn) serve() error {
 			{
 				// MAIL FROM:<sender@example.com>
 
-				if conn.from != "" {
+				if conn.from != nil {
 					log.Printf("    > MAIL FROM already specified: %s", conn.from)
 					conn.write(503, "Sender already specified")
 					break
 				}
 
-				conn.from = parseFROM(args)
-
 				// Check if we can parse the params
-				if conn.from == "" {
+				from := parseFROM(args)
+				
+				if from == nil {
 					log.Printf("    > Could not parse email")
 					conn.write(501, "Invalid syntax")
-				} else {
-					log.Printf("    > From: %s", conn.from)
-					conn.write(250, "OK")
+					break
 				}
+				
+				// Check if the email address is valid
+				if !from.ValidateFrom(conn) {
+					log.Printf("    > Sender email invalid")
+					conn.write(541, "Host doensn't match domain")
+						// What says the RFC about this?
+						// i didn't really find what to do when we
+						// don't accept the server/address
+					break
+				}
+				
+				// Mail is correct!
+				conn.from = from
+				log.Printf("    > From: %s", conn.from)
+				conn.write(250, "OK")
 
 			}
 
@@ -135,22 +149,33 @@ func (conn *Conn) serve() error {
 			{
 				// RCPT TO:<sender@example.com>
 
-				if conn.from == "" {
+				if conn.from == nil {
 					conn.write(503, "Need MAIL before RCPT")
 					break
 				}
 
+				// Check if we can parse the params
 				rcpt := parseTO(args)
 
-				// Check if we can parse the params
-				if rcpt == "" {
+				if rcpt == nil {
 					log.Printf("    > Could not parse email")
 					conn.write(501, "Invalid syntax")
-				} else {
-					conn.to = append(conn.to, rcpt)
-					log.Printf("    > To: %s", rcpt)
-					conn.write(250, "OK")
+					break
 				}
+				
+				// Check if email address is valid
+				if !rcpt.ValidateFrom(conn) {
+					// RFC 5321: 550  Requested action not taken: mailbox unavailable (e.g., mailbox
+					// 			 not found, no access, or command rejected for policy reasons)
+					log.Printf("    > Recepient email invalid")
+					conn.write(541, "Host doensn't match domain")
+					break
+				}
+				
+				conn.to = append(conn.to, *rcpt)
+				log.Printf("    > To: %s", rcpt)
+				conn.write(250, "OK")
+				
 
 				/*
 					RFC 5321:
@@ -244,7 +269,7 @@ func (conn *Conn) serve() error {
 
 		case "DATA":
 			{
-				if conn.from == "" {
+				if conn.from == nil {
 					conn.write(503, "Need MAIL before DATA")
 					break
 				}
@@ -334,6 +359,24 @@ func (conn *Conn) serve() error {
 					SMTP provides as additional features, commands to verify a user
 					name or expand a mailing list.  This is done with the VRFY and
 					EXPN commands
+					
+					RFC 5321
+					
+					As discussed in Section 3.5, individual sites may want to disable
+					either or both of VRFY or EXPN for security reasons (see below).  As
+					a corollary to the above, implementations that permit this MUST NOT
+					appear to have verified addresses that are not, in fact, verified.
+					If a site disables these commands for security reasons, the SMTP
+					server MUST return a 252 response, rather than a code that could be
+					confused with successful or unsuccessful verification.
+					
+					Returning a 250 reply code with the address listed in the VRFY
+					command after having checked it only for syntax violates this rule.
+					Of course, an implementation that "supports" VRFY by always returning
+					550 whether or not the address is valid is equally not in
+					conformance.
+					
+				From what I have read, 502 is better than 252...
 				*/
 
 			}
@@ -383,10 +426,11 @@ func (conn *Conn) write(code int, str string) {
 }
 
 func (conn *Conn) reset() {
-	conn.from = ""
-	conn.to = make([]string, 0)
+	conn.from = nil
+	conn.to = make([]MailAddress, 0)
 	conn.msg = make([]byte, 0)
 }
+
 
 func parseLine(line string) (verb string, args string) {
 	i := strings.Index(line, " ")
@@ -418,36 +462,30 @@ func parseLine(line string) (verb string, args string) {
 
 // some regexes we don't want to compile for each request
 var (
-	fromRegex = regexp.MustCompile(`[Ff][Rr][Oo][Mm]:[\ ]?<(.+@.+)>`)
-	toRegex   = regexp.MustCompile(`[Tt][Oo]:<(.+@.+)>.*`)
+	fromRegex = regexp.MustCompile(`[Ff][Rr][Oo][Mm]:[\ ]?<(.+)@(.+)>`)
+	toRegex   = regexp.MustCompile(`[Tt][Oo]:<(.+)@(.+)>.*`)
 )
 
-func parseFROM(line string) string {
+func parseFROM(line string) *MailAddress {
 
 	matches := fromRegex.FindStringSubmatch(line)
 
-	if len(matches) == 2 {
-		return matches[1]
+	if len(matches) == 3 {
+		return &MailAddress{Local: matches[1], Domain: matches[2]}
 	} else {
-		return ""
+		return nil
 	}
 
 }
 
-func parseTO(line string) string {
+func parseTO(line string) *MailAddress {
 
 	matches := toRegex.FindStringSubmatch(line)
 
-	if len(matches) == 2 {
-		return matches[1]
+	if len(matches) == 3 {
+		return &MailAddress{Local: matches[1], Domain: matches[2]}
 	} else {
-		return ""
+		return nil
 	}
 
 }
-
-/*
-	RFC 5321
-
-	The maximum total length of a domain name or number is 255 octets.
-*/
