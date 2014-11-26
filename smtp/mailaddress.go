@@ -2,6 +2,10 @@ package smtp
 
 import (
     "fmt"
+    "net"
+    "log"
+    "bytes"
+    "strings"
 )
 
 type MailAddress struct {
@@ -65,6 +69,36 @@ func (m *MailAddress) Validate() bool {
 // and if the email domain/address matches the clients remote address
 func (m *MailAddress) ValidateFrom(conn *Conn) bool {
     // TODO
+    // check for IP address
+    ip := net.ParseIP(m.Domain)
+    conn_addr_str := strings.Split(conn.c.RemoteAddr().String(), ":")[0];
+    conn_addr := net.ParseIP(conn_addr_str)
+    
+    if ip != nil {
+        // it's an IP
+        if 1 == bytes.Compare(conn_addr, ip) {
+            log.Printf("    > IP in from(%s) doesn't match real IP(%s)", ip, conn.c.RemoteAddr())
+            return false
+        }
+        
+    } else {
+        // try to interpret is as a domain
+        // check for rDNS of client IP
+        domains, err := net.LookupAddr(conn.c.RemoteAddr().String())
+        if err != nil {
+            log.Printf("    > rDNS lookup failed: %s", err)
+            return false
+        }
+        
+        if !stringInSlice(m.Domain, domains) {
+            log.Printf("    > rDNS(%s) didn't match Domain(%s)", domains, m.Domain)
+            return false
+        }
+        
+        // if no rDNS match found, check for the SPF record
+        // TODO
+    }
+    
     return true
 }
 
@@ -73,4 +107,16 @@ func (m *MailAddress) ValidateFrom(conn *Conn) bool {
 func (m *MailAddress) ValidateTo(conn *Conn) bool {
     // TODO
     return true
+}
+
+
+
+
+func stringInSlice(needle string, haystack []string) bool {
+    for _, item := range haystack {
+        if item == needle {
+            return true
+        }
+    }
+    return false
 }
