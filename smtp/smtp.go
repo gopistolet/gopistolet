@@ -2,13 +2,13 @@ package smtp
 
 import (
 	"bufio"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
 	"regexp"
 	"strings"
 )
-
 
 type Handler func()
 
@@ -54,7 +54,10 @@ func (srv *Server) Serve(ln net.Listener) error {
 // Creat a wrapper around net.Conn
 func (srv *Server) newConn(c net.Conn) *Conn {
 	return &Conn{
-		c: c,
+		c:    c,
+		to:   []MailAddress{},
+		msg:  []byte{},
+		auth: false,
 	}
 }
 
@@ -64,6 +67,8 @@ type Conn struct {
 	from *MailAddress
 	to   []MailAddress
 	msg  []byte
+
+	auth bool
 }
 
 func (conn *Conn) serve() error {
@@ -94,11 +99,16 @@ func (conn *Conn) serve() error {
 			{
 				// Initiate (extended) SMTP conversation
 				log.Printf("    > Extended SMTP request from %s", args)
-				conn.write(502, "Command not implemented")
-				
-					/*
+				conn.reset()
+
+				conn.writeMultiLine(250,
+					"GoPistolet ESMTP",
+					"AUTH LOGIN",
+				)
+
+				/*
 					RFC 5321
-					
+
 					An EHLO command MAY be issued by a client later in the session.  If
 					it is issued after the session begins and the EHLO command is
 					acceptable to the SMTP server, the SMTP server MUST clear all buffers
@@ -106,7 +116,7 @@ func (conn *Conn) serve() error {
 					other words, the sequence of RSET followed immediately by EHLO is
 					redundant, but not harmful other than in the performance cost of
 					executing unnecessary commands.
-					*/
+				*/
 			}
 
 		case "MAIL":
@@ -121,24 +131,29 @@ func (conn *Conn) serve() error {
 
 				// Check if we can parse the params
 				from := parseFROM(args)
-				
+
 				if from == nil {
-					log.Printf("    > Could not parse email")
+					log.Printf("    > Could not parse email %v", args)
 					conn.write(501, "Invalid syntax")
 					break
 				}
-				
-				// Check if the email address is valid
-				if !from.ValidateFrom(conn) {
+
+				// Check if the domain of sender == sending smtp if we are incomming
+				if !conn.auth && !from.HasReverseDns(conn) {
 					log.Printf("    > Sender email invalid")
-					conn.write(541, "Host doensn't match domain")
-						// What says the RFC about this?
-						// i didn't really find what to do when we
-						// don't accept the server/address
+					conn.write(541, "Sender should reverse dns to your server")
+					// What says the RFC about this?
+					// i didn't really find what to do when we
+					// don't accept the server/address
 					break
 				}
-				
-				// Mail is correct!
+
+				if conn.auth {
+					// TODO: Check if from == the authenticated user.
+					// If we are authenticated we can send from any address now.
+				}
+
+				// Sender is valid!
 				conn.from = from
 				log.Printf("    > From: %s", conn.from)
 				conn.write(250, "OK")
@@ -158,24 +173,16 @@ func (conn *Conn) serve() error {
 				rcpt := parseTO(args)
 
 				if rcpt == nil {
-					log.Printf("    > Could not parse email")
+					log.Printf("    > Could not parse email %v", args)
 					conn.write(501, "Invalid syntax")
 					break
 				}
-				
-				// Check if email address is valid
-				if !rcpt.ValidateFrom(conn) {
-					// RFC 5321: 550  Requested action not taken: mailbox unavailable (e.g., mailbox
-					// 			 not found, no access, or command rejected for policy reasons)
-					log.Printf("    > Recepient email invalid")
-					conn.write(541, "Host doensn't match domain")
-					break
-				}
-				
+
+				// TODO: Check if rcpt.Domain exists
+
 				conn.to = append(conn.to, *rcpt)
 				log.Printf("    > To: %s", rcpt)
 				conn.write(250, "OK")
-				
 
 				/*
 					RFC 5321:
@@ -228,32 +235,32 @@ func (conn *Conn) serve() error {
 						  for this user, and the sender must either redirect the mail
 						  according to the information provided or return an error
 						  response to the originating user.
-						  
-					
+
+
 					RFC 5321
-						  
+
 					When an SMTP server receives a message for delivery or further
 					processing, it MUST insert trace ("time stamp" or "Received")
 					information at the beginning of the message content, as discussed in
 					Section 4.1.1.4.
-					
+
 					This line MUST be structured as follows:
-					
+
 					o  The FROM clause, which MUST be supplied in an SMTP environment,
 					   SHOULD contain both (1) the name of the source host as presented
 					   in the EHLO command and (2) an address literal containing the IP
 					   address of the source, determined from the TCP connection.
-					
+
 					o  The ID clause MAY contain an "@" as suggested in RFC 822, but this
 					   is not required.
-					
+
 					o  If the FOR clause appears, it MUST contain exactly one <path>
 					   entry, even when multiple RCPT commands have been given.  Multiple
 					   <path>s raise some security issues and have been deprecated, see
 					   Section 7.2.
-					   
+
 					---
-					
+
 					Any system that includes an SMTP server supporting mail relaying or
 					delivery MUST support the reserved mailbox "postmaster" as a case-
 					insensitive local name.  This postmaster address is not strictly
@@ -311,19 +318,19 @@ func (conn *Conn) serve() error {
 						when possible.
 
 						552 Too much mail data
-						
+
 						---
-						
+
 						Without some provision for data transparency, the character sequence
 						"<CRLF>.<CRLF>" ends the mail text and cannot be sent by the user.
 						In general, users are not aware of such "forbidden" sequences.  To
 						allow all user composed text to be transmitted transparently, the
 						following procedures are used:
-						
+
 						o  Before sending a line of mail text, the SMTP client checks the
 						   first character of the line.  If it is a period, one additional
 						   period is inserted at the beginning of the line.
-						
+
 						o  When a line of mail text is received by the SMTP server, it checks
 						   the line.  If the line is composed of a single period, it is
 						   treated as the end of mail indicator.  If the first character is a
@@ -354,34 +361,35 @@ func (conn *Conn) serve() error {
 				// Additional commands
 				conn.write(502, "Command not implemented")
 				/*
-					RFC 821
+						RFC 821
 
-					SMTP provides as additional features, commands to verify a user
-					name or expand a mailing list.  This is done with the VRFY and
-					EXPN commands
-					
-					RFC 5321
-					
-					As discussed in Section 3.5, individual sites may want to disable
-					either or both of VRFY or EXPN for security reasons (see below).  As
-					a corollary to the above, implementations that permit this MUST NOT
-					appear to have verified addresses that are not, in fact, verified.
-					If a site disables these commands for security reasons, the SMTP
-					server MUST return a 252 response, rather than a code that could be
-					confused with successful or unsuccessful verification.
-					
-					Returning a 250 reply code with the address listed in the VRFY
-					command after having checked it only for syntax violates this rule.
-					Of course, an implementation that "supports" VRFY by always returning
-					550 whether or not the address is valid is equally not in
-					conformance.
-					
-				From what I have read, 502 is better than 252...
+						SMTP provides as additional features, commands to verify a user
+						name or expand a mailing list.  This is done with the VRFY and
+						EXPN commands
+
+						RFC 5321
+
+						As discussed in Section 3.5, individual sites may want to disable
+						either or both of VRFY or EXPN for security reasons (see below).  As
+						a corollary to the above, implementations that permit this MUST NOT
+						appear to have verified addresses that are not, in fact, verified.
+						If a site disables these commands for security reasons, the SMTP
+						server MUST return a 252 response, rather than a code that could be
+						confused with successful or unsuccessful verification.
+
+						Returning a 250 reply code with the address listed in the VRFY
+						command after having checked it only for syntax violates this rule.
+						Of course, an implementation that "supports" VRFY by always returning
+						550 whether or not the address is valid is equally not in
+						conformance.
+
+					From what I have read, 502 is better than 252...
 				*/
 
 			}
-			
-		case "SEND", "SOML", "SAML": {
+
+		case "SEND", "SOML", "SAML":
+			{
 				// Obsolete
 				conn.write(502, "Command not implemented")
 			}
@@ -398,6 +406,48 @@ func (conn *Conn) serve() error {
 				log.Printf("    > Closing connection")
 				conn.write(221, "Bye!")
 				return nil
+			}
+
+		case "AUTH":
+			{
+				// TODO: What if already authenticated?
+
+				if len(args) != 1 {
+					log.Printf("    > AUTH requires an argument")
+					conn.write(501, "Error parsing arguments")
+					return nil
+				}
+
+				authType := strings.ToUpper(args[0])
+				if authType != "LOGIN" {
+					log.Printf("    > AUTH only supports LOGIN")
+					conn.write(504, "Not supported")
+					return nil
+				}
+
+				conn.write(334, base64.StdEncoding.EncodeToString([]byte("Username:")))
+				encodedUsername, _ := br.ReadString('\n')
+				username, err := base64.StdEncoding.DecodeString(encodedUsername)
+				if err != nil {
+					log.Printf("    > Base64 decoding error: %v", err)
+					conn.write(500, "Not base64")
+					return nil
+				}
+
+				conn.write(334, base64.StdEncoding.EncodeToString([]byte("Password:")))
+				encodedPassword, _ := br.ReadString('\n')
+				password, err := base64.StdEncoding.DecodeString(encodedPassword)
+				if err != nil {
+					log.Printf("    > Base64 decoding error: %v", err)
+					conn.write(500, "Not base64")
+					return nil
+				}
+
+				log.Printf("    > User %s logged in with password %s", username, password)
+				// Valid user
+				conn.auth = true
+				//conn.write(235, "OK")
+				conn.write(535, "Authentication failed")
 			}
 
 		default:
@@ -425,14 +475,24 @@ func (conn *Conn) write(code int, str string) {
 	fmt.Fprintf(conn.c, "%d %s\r\n", code, str)
 }
 
+func (conn *Conn) writeMultiLine(code int, strs ...string) {
+	length := len(strs)
+	for i, str := range strs {
+		if i == length-1 {
+			conn.write(code, str)
+		} else {
+			fmt.Fprintf(conn.c, "%d-%s\r\n", code, str)
+		}
+	}
+}
+
 func (conn *Conn) reset() {
 	conn.from = nil
 	conn.to = make([]MailAddress, 0)
 	conn.msg = make([]byte, 0)
 }
 
-
-func parseLine(line string) (verb string, args string) {
+func parseLine(line string) (verb string, args []string) {
 	i := strings.Index(line, " ")
 	if i == -1 {
 		verb = strings.ToUpper(strings.TrimSpace(line))
@@ -440,7 +500,7 @@ func parseLine(line string) (verb string, args string) {
 	}
 
 	verb = strings.ToUpper(line[:i])
-	args = strings.TrimSpace(line[i+1 : len(line)])
+	args = strings.Split(strings.TrimSpace(line[i+1:len(line)]), " ")
 	return
 
 	/*
@@ -466,9 +526,12 @@ var (
 	toRegex   = regexp.MustCompile(`[Tt][Oo]:<(.+)@(.+)>.*`)
 )
 
-func parseFROM(line string) *MailAddress {
+func parseFROM(args []string) *MailAddress {
+	if len(args) < 1 {
+		return nil
+	}
 
-	matches := fromRegex.FindStringSubmatch(line)
+	matches := fromRegex.FindStringSubmatch(args[0])
 
 	if len(matches) == 3 {
 		return &MailAddress{Local: matches[1], Domain: matches[2]}
@@ -478,9 +541,12 @@ func parseFROM(line string) *MailAddress {
 
 }
 
-func parseTO(line string) *MailAddress {
+func parseTO(args []string) *MailAddress {
+	if len(args) < 1 {
+		return nil
+	}
 
-	matches := toRegex.FindStringSubmatch(line)
+	matches := toRegex.FindStringSubmatch(args[0])
 
 	if len(matches) == 3 {
 		return &MailAddress{Local: matches[1], Domain: matches[2]}

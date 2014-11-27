@@ -60,9 +60,8 @@ func (m *MailAddress) Validate() bool {
    The maximum total length of a domain name or number is 255 octets.
 */
 
-// ValidateFrom will check if the email address is valid
-// and if the email domain/address matches the clients remote address
-func (m *MailAddress) ValidateFrom(conn *Conn) bool {
+// Check if m.Domain reverses to conn.
+func (m *MailAddress) HasReverseDns(conn *Conn) bool {
 	// TODO
 	// check for IP address
 	ip := net.ParseIP(m.Domain)
@@ -100,10 +99,10 @@ func (m *MailAddress) ValidateFrom(conn *Conn) bool {
 	return true
 }
 
-// ValidateTo will check if the recepient email address is valid
-func (m *MailAddress) ValidateTo(conn *Conn) bool {
-	// TODO
-	return true
+// Check if we are m.Domain.
+func (m *MailAddress) IsLocal(conn *Conn) bool {
+	// TODO: Check the domain for real :p
+	return m.Domain == "gopistolet.be"
 }
 
 func stringInSlice(needle string, haystack []string) bool {
