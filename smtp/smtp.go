@@ -415,14 +415,14 @@ func (conn *Conn) serve() error {
 				if len(args) != 1 {
 					log.Printf("    > AUTH requires an argument")
 					conn.write(501, "Error parsing arguments")
-					return nil
+					break
 				}
 
 				authType := strings.ToUpper(args[0])
 				if authType != "LOGIN" {
 					log.Printf("    > AUTH only supports LOGIN")
 					conn.write(504, "Not supported")
-					return nil
+					break
 				}
 
 				conn.write(334, base64.StdEncoding.EncodeToString([]byte("Username:")))
@@ -431,7 +431,7 @@ func (conn *Conn) serve() error {
 				if err != nil {
 					log.Printf("    > Base64 decoding error: %v", err)
 					conn.write(500, "Not base64")
-					return nil
+					break
 				}
 
 				conn.write(334, base64.StdEncoding.EncodeToString([]byte("Password:")))
@@ -440,7 +440,7 @@ func (conn *Conn) serve() error {
 				if err != nil {
 					log.Printf("    > Base64 decoding error: %v", err)
 					conn.write(500, "Not base64")
-					return nil
+					break
 				}
 
 				log.Printf("    > User %s logged in with password %s", username, password)
