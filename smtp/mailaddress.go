@@ -61,7 +61,7 @@ func (m *MailAddress) Validate() bool {
 */
 
 // Check if m.Domain reverses to conn.
-func (m *MailAddress) HasReverseDns(conn *Conn) bool {
+func (m *MailAddress) HasReverseDns(conn *conn) bool {
 	// TODO
 	// check for IP address
 	ip := net.ParseIP(m.Domain)
@@ -100,7 +100,7 @@ func (m *MailAddress) HasReverseDns(conn *Conn) bool {
 }
 
 // Check if we are m.Domain.
-func (m *MailAddress) IsLocal(conn *Conn) bool {
+func (m *MailAddress) IsLocal(conn *conn) bool {
 	// TODO: Check the domain for real :p
 	return m.Domain == "gopistolet.be"
 }
