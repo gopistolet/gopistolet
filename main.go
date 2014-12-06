@@ -3,7 +3,7 @@ package main
 import "gopistolet/smtp"
 
 func main() {
-	config := smtp.Config{Port: 1234, Hostname: "", Key: "cert/server.key", Cert: "cert/server.crt"}
+	config := smtp.Config{Port: 1234, Hostname: ""}
 	s := smtp.NewMSAServer(config)
 	s.ListenAndServe()
 }

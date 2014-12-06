@@ -18,6 +18,7 @@ type smtper interface {
 	authenticated() bool
 	validateFrom() bool
 	extension(string) func(*conn, []string)
+	handleMail(*conn, []string)
 }
 
 type Config struct {
@@ -57,6 +58,9 @@ func (mta *MTA) extension(verb string) func(*conn, []string) {
 	return nil
 }
 
+func (mta *MTA) handleMail(conn *conn, args []string) {
+}
+
 type MSA struct {
 	srv *Server
 }
@@ -89,6 +93,40 @@ func (msa *MSA) extension(verb string) func(*conn, []string) {
 	}
 
 	return nil
+}
+
+func (msa *MSA) handleMail(conn *conn, args []string) {
+	if !msa.authenticated() {
+		log.Printf("Can not start MAIL, not authenticated")
+		// TODO: Do something?
+		return
+	}
+
+	if conn.from != nil {
+		log.Printf("MAIL FROM already specified: %s", conn.from)
+		conn.write(503, "Sender already specified")
+		return
+	}
+
+	// Check if we can parse the params
+	from := parseFROM(args)
+
+	if from == nil {
+		log.Printf("Could not parse email %v", args)
+		conn.write(501, "Invalid syntax")
+		return
+	}
+
+	if !msa.validateFrom() {
+		log.Println("MAIL FROM invalid")
+		// TODO: Do something?
+		return
+	}
+
+	// Sender is valid!
+	conn.from = from
+	log.Printf("From: %s", conn.from)
+	conn.write(250, "OK")
 }
 
 func (msa *MSA) handleAUTH(conn *conn, args []string) {
@@ -296,40 +334,6 @@ func (conn *conn) handleEHLO(args []string) {
 		redundant, but not harmful other than in the performance cost of
 		executing unnecessary commands.
 	*/
-}
-
-func (conn *conn) handleMAIL(args []string) {
-	if !conn.srv.authenticated() {
-		log.Printf("Can not start MAIL, not authenticated")
-		// TODO: Do something?
-		return
-	}
-
-	if conn.from != nil {
-		log.Printf("MAIL FROM already specified: %s", conn.from)
-		conn.write(503, "Sender already specified")
-		return
-	}
-
-	// Check if we can parse the params
-	from := parseFROM(args)
-
-	if from == nil {
-		log.Printf("Could not parse email %v", args)
-		conn.write(501, "Invalid syntax")
-		return
-	}
-
-	if !conn.srv.validateFrom() {
-		log.Println("MAIL FROM invalid")
-		// TODO: Do something?
-		return
-	}
-
-	// Sender is valid!
-	conn.from = from
-	log.Printf("From: %s", conn.from)
-	conn.write(250, "OK")
 }
 
 func (conn *conn) handleRCPT(args []string) {
@@ -558,7 +562,7 @@ func (conn *conn) serve() error {
 
 		case "MAIL":
 			{
-				conn.handleMAIL(args)
+				conn.srv.handleMail(conn, args)
 			}
 
 		case "RCPT":
