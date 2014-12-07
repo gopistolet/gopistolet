@@ -66,9 +66,13 @@ type MSA struct {
 }
 
 func (msa *MSA) extensions(conn *conn) []string {
-	e := []string{"STARTTLS"}
+	e := []string{}
 
-	if conn.tls {
+	if msa.srv.tlsConfig != nil {
+		e = append(e, "STARTTLS")
+	}
+
+	if conn.tls || msa.srv.tlsConfig == nil {
 		e = append(e, "AUTH LOGIN")
 	}
 
@@ -130,7 +134,7 @@ func (msa *MSA) handleMail(conn *conn, args []string) {
 }
 
 func (msa *MSA) handleAUTH(conn *conn, args []string) {
-	if !conn.tls {
+	if !conn.tls && msa.srv.tlsConfig != nil {
 		log.Println("Can't handle AUTH without tls")
 		conn.write(502, "Enable tls before sending AUTH")
 		return
