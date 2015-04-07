@@ -1,0 +1,12 @@
+{
+	"Users": {
+		"Mathias": {
+			"Name": "Mathias",
+			"Email": {
+				"Local": "mathias",
+				"Domain": "@gopistolet.com"
+			},
+			"Password": "noyb"
+		}
+	}
+}
