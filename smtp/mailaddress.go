@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"regexp"
 )
 
 type MailAddress struct {
@@ -50,8 +51,28 @@ func (m *MailAddress) String() string {
 
    String         = Atom / Quoted-string
 */
-func (m *MailAddress) Validate() bool {
-	return true
+
+// some regexes we don't want to compile for each request
+var (
+	localRegex = regexp.MustCompile("^[a-zA-Z0-9,!#\\$%&'\\*\\+/=\\?\\^_`\\{\\|}~-]+(\\.[a-zA-Z0-9,!#\\$%&'\\*\\+/=\\?\\^_`\\{\\|}~-]+)*$")
+	// TODO: quoted-string and more special chars
+)
+
+func (m *MailAddress) Validate() (bool, string) {
+	// Check lengths
+	if len(m.Local) > 64 {
+		return false, "Local too long"
+	}
+	if len(m.Domain) > 253 {
+		return false, "Domain too long"
+	}
+	if len(m.Domain)+len(m.Local) > 254 {
+		return false, "MailAddress too long"
+	}
+	if !localRegex.MatchString(m.Local) {
+		return false, "Invalid local part"
+	}
+	return true, ""
 }
 
 /*
