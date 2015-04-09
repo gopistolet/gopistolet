@@ -9,6 +9,7 @@ import (
 	"net"
 	"regexp"
 	"strings"
+	"errors"
 )
 
 type Handler func()
@@ -113,7 +114,7 @@ func (msa *MSA) handleMail(conn *conn, args []string) {
 	}
 
 	// Check if we can parse the params
-	from := parseFROM(args)
+	from,_ := parseFROM(args)
 
 	if from == nil {
 		log.Printf("Could not parse email %v", args)
@@ -347,7 +348,7 @@ func (conn *conn) handleRCPT(args []string) {
 	}
 
 	// Check if we can parse the params
-	rcpt := parseTO(args)
+	rcpt,_ := parseTO(args)
 
 	if rcpt == nil {
 		log.Printf("Could not parse rcpt %v", args)
@@ -707,32 +708,32 @@ var (
 	toRegex   = regexp.MustCompile(`[Tt][Oo]:<(.+)@(.+)>.*`)
 )
 
-func parseFROM(args []string) *MailAddress {
+func parseFROM(args []string) (*MailAddress, error) {
 	if len(args) < 1 {
-		return nil
+		return nil, errors.New("No FROM given")
 	}
 
 	matches := fromRegex.FindStringSubmatch(args[0])
 
 	if len(matches) == 3 {
-		return &MailAddress{Local: matches[1], Domain: matches[2]}
+		return &MailAddress{Local: matches[1], Domain: matches[2]}, nil
 	} else {
-		return nil
+		return nil, errors.New("Invalid email")
 	}
 
 }
 
-func parseTO(args []string) *MailAddress {
+func parseTO(args []string) (*MailAddress, error) {
 	if len(args) < 1 {
-		return nil
+		return nil, errors.New("No TO given")
 	}
 
 	matches := toRegex.FindStringSubmatch(args[0])
 
 	if len(matches) == 3 {
-		return &MailAddress{Local: matches[1], Domain: matches[2]}
+		return &MailAddress{Local: matches[1], Domain: matches[2]}, nil
 	} else {
-		return nil
+		return nil, errors.New("Invalid email")
 	}
 
 }
