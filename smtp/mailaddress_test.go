@@ -1,7 +1,7 @@
 package smtp
 
 import (
-	"fmt"
+	_ "fmt"
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
 )
@@ -34,7 +34,6 @@ func TestParseAddress(t *testing.T) {
 
 		for _, mail := range mails {
 			address, err := ParseAddress(mail.str)
-			fmt.Println(address)
 			So(err, ShouldEqual, nil)
 			So(address.String(), ShouldEqual, mail.parsed.String())
 		}

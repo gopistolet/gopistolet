@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"errors"
 	_ "fmt"
 	"log"
 	"net"
@@ -82,12 +83,34 @@ func ParseAddress(address_str string) (*MailAddress, error) {
 	local := address.Address[0:index]
 	domain := address.Address[index+1 : len(address.Address)]
 
-	return &MailAddress{Name: address.Name, Local: local, Domain: domain}, nil
+	m := MailAddress{Name: address.Name, Local: local, Domain: domain}
+
+	if valid, msg := m.Validate(); !valid {
+		return nil, errors.New(msg)
+	}
+
+	return &m, nil
 
 }
 
 func (m *MailAddress) Validate() (bool, string) {
-	// Check lengths
+	/*
+		 RFC 5321
+
+			4.5.3.1.1.  Local-part
+
+			   The maximum total length of a user name or other local-part is 64
+			   octets.
+
+			4.5.3.1.2.  Domain
+
+			   The maximum total length of a domain name or number is 255 octets.
+
+			4.5.3.1.3.  Path
+
+			   The maximum total length of a reverse-path or forward-path is 256
+			   octets (including the punctuation and element separators).
+	*/
 	if len(m.Local) > 64 {
 		return false, "Local too long"
 	}

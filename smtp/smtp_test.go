@@ -12,10 +12,10 @@ func TestParseLine(t *testing.T) {
 
 		{
 			line := "MAIL FROM: <example@example.com>"
-			verb, args := parseLine(line)
+			verb, args, err := parseLine(line)
 
+			So(err, ShouldEqual, nil)
 			So(verb, ShouldEqual, "MAIL")
-
 			So(strings.Join(args, " "), ShouldEqual, "FROM: <example@example.com>")
 		}
 
@@ -28,7 +28,8 @@ func TestParseFrom(t *testing.T) {
 
 		{ // Most simple test for email FROM
 			line := "MAIL FROM:<example.email@example.com>"
-			_, args := parseLine(line)
+			_, args, err := parseLine(line)
+			So(err, ShouldEqual, nil)
 
 			email, err := parseFROM(args)
 
@@ -39,7 +40,8 @@ func TestParseFrom(t *testing.T) {
 
 		{ // With space between FROM: and email
 			line := "MAIL FROM: <example.email@example.com>"
-			_, args := parseLine(line)
+			_, args, err := parseLine(line)
+			So(err, ShouldEqual, nil)
 
 			email, err := parseFROM(args)
 
@@ -50,7 +52,8 @@ func TestParseFrom(t *testing.T) {
 
 		{ // Quoted string
 			line := `MAIL FROM: <" example@email"@example.com>`
-			_, args := parseLine(line)
+			_, args, err := parseLine(line)
+			So(err, ShouldEqual, nil)
 
 			email, err := parseFROM(args)
 
@@ -61,7 +64,8 @@ func TestParseFrom(t *testing.T) {
 
 		{ // With name
 			line := `MAIL FROM: "Bob Example" <bob@example.com>`
-			_, args := parseLine(line)
+			_, args, err := parseLine(line)
+			So(err, ShouldEqual, nil)
 
 			email, err := parseFROM(args)
 
@@ -79,7 +83,8 @@ func TestParseTo(t *testing.T) {
 
 		{ // Most simple test for email FROM
 			line := "RCPT TO:<example.email@example.com>"
-			_, args := parseLine(line)
+			_, args, err := parseLine(line)
+			So(err, ShouldEqual, nil)
 
 			email, err := parseTO(args)
 
@@ -90,7 +95,8 @@ func TestParseTo(t *testing.T) {
 
 		{ // With space between FROM: and email
 			line := "RCPT TO: <example.email@example.com>"
-			_, args := parseLine(line)
+			_, args, err := parseLine(line)
+			So(err, ShouldEqual, nil)
 
 			email, err := parseTO(args)
 

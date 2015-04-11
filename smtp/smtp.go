@@ -472,10 +472,13 @@ func (conn *conn) handleDATA(args []string) {
 		fmt.Println(data)
 		if data == ".\r\n" || data == ".\r" || data == ".\n" {
 			break
-		} else {
-			conn.msg = append(conn.msg, []byte(data)...)
-			continue
 		}
+		if data[0:2] == ".." {
+			data = data[1:len(data)]
+		}
+
+		conn.msg = append(conn.msg, []byte(data)...)
+		continue
 
 		// TODO break when there is no more content
 		// TODO check for content too long
@@ -551,7 +554,10 @@ func (conn *conn) serve() error {
 			continue
 		}
 
-		verb, args := parseLine(line)
+		verb, args, err := parseLine(line)
+		conn.write(500, err.Error())
+		conn.c.Close()
+
 		switch verb {
 
 		case "HELO":
@@ -673,16 +679,7 @@ func (conn *conn) reset() {
 	conn.msg = make([]byte, 0)
 }
 
-func parseLine(line string) (verb string, args []string) {
-	i := strings.Index(line, " ")
-	if i == -1 {
-		verb = strings.ToUpper(strings.TrimSpace(line))
-		return
-	}
-
-	verb = strings.ToUpper(line[:i])
-	args = strings.Split(strings.TrimSpace(line[i+1:len(line)]), " ")
-	return
+func parseLine(line string) (verb string, args []string, err error) {
 
 	/*
 		RFC 5321
@@ -699,6 +696,19 @@ func parseLine(line string) (verb string, args []string) {
 
 			500 Line too long
 	*/
+	if len(line) > 512 {
+		return "", []string{}, errors.New("Line too long")
+	}
+
+	i := strings.Index(line, " ")
+	if i == -1 {
+		verb = strings.ToUpper(strings.TrimSpace(line))
+		return
+	}
+
+	verb = strings.ToUpper(line[:i])
+	args = strings.Split(strings.TrimSpace(line[i+1:len(line)]), " ")
+	return
 }
 
 func parseFROM(args []string) (*MailAddress, error) {
