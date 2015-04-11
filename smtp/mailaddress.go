@@ -129,6 +129,47 @@ func (m *MailAddress) Validate() (bool, string) {
    The maximum total length of a domain name or number is 255 octets.
 */
 
+
+// ValidateDomainAddress will check if the sender's IP is authorized to send from the domain
+func (m *MailAddress) ValidateDomainAddress(conn *conn) (bool, error) {
+	
+	// TODO
+	// check for IP address
+	ip := net.ParseIP(m.Domain)
+	connAddr, ok := (conn.c.RemoteAddr()).(*net.TCPAddr)
+	if !ok {
+		return false, errors.New("Connection " + conn.c.RemoteAddr().String() + " isn't a tcp connection")
+	}
+	
+	if ip != nil {
+		// it's an IP
+		if !ip.Equal(connAddr.IP) {
+			return false, errors.New("IP in from(" + ip.String() + ") doesn't match real IP(" + connAddr.IP.String() + ")")
+		}
+	
+	} else {
+		// try to interpret is as a domain
+		// Lookup A and AAAA records
+		addresses, err := net.LookupIP(m.Domain)
+		if err != nil {
+			return false, err
+		}
+		for _,address := range addresses {
+			if address.Equal(connAddr.IP) {
+				return true, nil
+			}
+		}
+	
+		// Lookup SPF reocrds
+		// TODO
+	}
+	
+	return false, errors.New("End of non-void function")
+
+	
+}
+
+
 // Check if m.Domain reverses to conn.
 func (m *MailAddress) HasReverseDns(conn *conn) bool {
 	// TODO
