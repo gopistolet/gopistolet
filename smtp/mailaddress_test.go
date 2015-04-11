@@ -1,10 +1,47 @@
 package smtp
 
 import (
-	_ "fmt"
+	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
 )
+
+func TestParseAddress(t *testing.T) {
+
+	Convey("Testing ParseAddress()", t, func() {
+
+		mails := []struct {
+			str    string
+			parsed MailAddress
+		}{
+			{
+				str: `"Bob" <bob@example.com>`,
+				parsed: MailAddress{
+					Name:   `Bob`,
+					Local:  `bob`,
+					Domain: `example.com`,
+				},
+			},
+			{
+				str: `   <bob@example.com> `,
+				parsed: MailAddress{
+					Name:   ``,
+					Local:  `bob`,
+					Domain: `example.com`,
+				},
+			},
+		}
+
+		for _, mail := range mails {
+			address, err := ParseAddress(mail.str)
+			fmt.Println(address)
+			So(err, ShouldEqual, nil)
+			So(address.String(), ShouldEqual, mail.parsed.String())
+		}
+
+	})
+
+}
 
 func TestValidate(t *testing.T) {
 	Convey("Testing Validate()", t, func() {

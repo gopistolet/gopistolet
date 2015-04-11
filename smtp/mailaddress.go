@@ -1,19 +1,22 @@
 package smtp
 
 import (
-	"fmt"
+	_ "fmt"
 	"log"
 	"net"
-	"regexp"
+	"net/mail"
+	"strings"
 )
 
 type MailAddress struct {
+	Name   string
 	Local  string
 	Domain string
 }
 
 func (m *MailAddress) String() string {
-	return fmt.Sprintf("%s@%s", m.Local, m.Domain)
+	a := mail.Address{Name: m.Name, Address: m.Local + "@" + m.Domain}
+	return a.String()
 }
 
 // Validate the email adress
@@ -50,13 +53,38 @@ func (m *MailAddress) String() string {
                   ; double-quote and the backslash itself.
 
    String         = Atom / Quoted-string
+
+
+
+
+   RFC 5322 (since RFC 5321 never mentions atext rule)
+
+   atext           =   ALPHA / DIGIT /    ; Printable US-ASCII
+                       "!" / "#" /        ;  characters not including
+                       "$" / "%" /        ;  specials.  Used for atoms.
+                       "&" / "'" /
+                       "*" / "+" /
+                       "-" / "/" /
+                       "=" / "?" /
+                       "^" / "_" /
+                       "`" / "{" /
+                       "|" / "}" /
+                       "~"
 */
 
-// some regexes we don't want to compile for each request
-var (
-	localRegex = regexp.MustCompile("^[a-zA-Z0-9,!#\\$%&'\\*\\+/=\\?\\^_`\\{\\|}~-]+(\\.[a-zA-Z0-9,!#\\$%&'\\*\\+/=\\?\\^_`\\{\\|}~-]+)*$")
-	// TODO: quoted-string and more special chars
-)
+func ParseAddress(address_str string) (*MailAddress, error) {
+	address, err := mail.ParseAddress(address_str)
+	if err != nil {
+		return nil, err
+	}
+
+	index := strings.LastIndex(address.Address, "@")
+	local := address.Address[0:index]
+	domain := address.Address[index+1 : len(address.Address)]
+
+	return &MailAddress{Name: address.Name, Local: local, Domain: domain}, nil
+
+}
 
 func (m *MailAddress) Validate() (bool, string) {
 	// Check lengths
@@ -68,9 +96,6 @@ func (m *MailAddress) Validate() (bool, string) {
 	}
 	if len(m.Domain)+len(m.Local) > 254 {
 		return false, "MailAddress too long"
-	}
-	if !localRegex.MatchString(m.Local) {
-		return false, "Invalid local part"
 	}
 	return true, ""
 }

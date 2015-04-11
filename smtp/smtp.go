@@ -4,12 +4,11 @@ import (
 	"bufio"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"net"
-	"regexp"
 	"strings"
-	"errors"
 )
 
 type Handler func()
@@ -114,7 +113,7 @@ func (msa *MSA) handleMail(conn *conn, args []string) {
 	}
 
 	// Check if we can parse the params
-	from,_ := parseFROM(args)
+	from, _ := parseFROM(args)
 
 	if from == nil {
 		log.Printf("Could not parse email %v", args)
@@ -348,7 +347,7 @@ func (conn *conn) handleRCPT(args []string) {
 	}
 
 	// Check if we can parse the params
-	rcpt,_ := parseTO(args)
+	rcpt, _ := parseTO(args)
 
 	if rcpt == nil {
 		log.Printf("Could not parse rcpt %v", args)
@@ -702,24 +701,19 @@ func parseLine(line string) (verb string, args []string) {
 	*/
 }
 
-// some regexes we don't want to compile for each request
-var (
-	fromRegex = regexp.MustCompile(`[Ff][Rr][Oo][Mm]:[\ ]?<(.+)@(.+)>`)
-	toRegex   = regexp.MustCompile(`[Tt][Oo]:<(.+)@(.+)>.*`)
-)
-
 func parseFROM(args []string) (*MailAddress, error) {
 	if len(args) < 1 {
 		return nil, errors.New("No FROM given")
 	}
 
-	matches := fromRegex.FindStringSubmatch(args[0])
-
-	if len(matches) == 3 {
-		return &MailAddress{Local: matches[1], Domain: matches[2]}, nil
-	} else {
-		return nil, errors.New("Invalid email")
+	joined_args := strings.Join(args, " ")
+	index := strings.Index(joined_args, ":")
+	if index == -1 {
+		return nil, errors.New("No FROM given (didn't find ':')")
 	}
+	address_str := joined_args[index+1 : len(joined_args)]
+
+	return ParseAddress(address_str)
 
 }
 
@@ -728,12 +722,12 @@ func parseTO(args []string) (*MailAddress, error) {
 		return nil, errors.New("No TO given")
 	}
 
-	matches := toRegex.FindStringSubmatch(args[0])
-
-	if len(matches) == 3 {
-		return &MailAddress{Local: matches[1], Domain: matches[2]}, nil
-	} else {
-		return nil, errors.New("Invalid email")
+	joined_args := strings.Join(args, " ")
+	index := strings.Index(joined_args, ":")
+	if index == -1 {
+		return nil, errors.New("No TO given (didn't find ':')")
 	}
+	address_str := joined_args[index+1 : len(joined_args)]
 
+	return ParseAddress(address_str)
 }
