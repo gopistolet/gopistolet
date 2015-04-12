@@ -1,6 +1,6 @@
 package user
 
-import "gopistolet/smtp"
+import "github.com/gopistolet/gopistolet/smtp"
 
 // Implementation of User for our SMTP service
 type User struct {

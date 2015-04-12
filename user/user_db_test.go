@@ -3,7 +3,7 @@ package user
 import (
 	_ "fmt"
 	. "github.com/smartystreets/goconvey/convey"
-	_ "gopistolet/helpers"
+	_ "github.com/gopistolet/gopistolet/helpers"
 	"testing"
 )
 

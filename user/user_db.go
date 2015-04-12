@@ -1,6 +1,6 @@
 package user
 
-import "gopistolet/helpers"
+import "github.com/gopistolet/gopistolet/helpers"
 import "errors"
 import "io/ioutil"
 import "encoding/json"

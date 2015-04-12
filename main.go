@@ -1,6 +1,6 @@
 package main
 
-import "gopistolet/smtp"
+import "github.com/gopistolet/gopistolet/smtp"
 
 func main() {
 	config := smtp.Config{Port: 1234, Hostname: ""}
