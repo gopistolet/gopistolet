@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/mail"
 	"strings"
+	"github.com/gopistolet/gospf"
+	"github.com/gopistolet/gospf/dns"
 )
 
 type MailAddress struct {
@@ -136,32 +138,36 @@ func (m *MailAddress) ValidateDomainAddress(conn *conn) (bool, error) {
 	// TODO
 	// check for IP address
 	ip := net.ParseIP(m.Domain)
-	connAddr, ok := (conn.c.RemoteAddr()).(*net.TCPAddr)
-	if !ok {
-		return false, errors.New("Connection " + conn.c.RemoteAddr().String() + " isn't a tcp connection")
-	}
-	
+	connAddr := conn.c.RemoteAddr().String()
+
 	if ip != nil {
 		// it's an IP
-		if !ip.Equal(connAddr.IP) {
-			return false, errors.New("IP in from(" + ip.String() + ") doesn't match real IP(" + connAddr.IP.String() + ")")
+		if ip.String() != connAddr {
+			return false, errors.New("IP in from(" + ip.String() + ") doesn't match real IP(" + connAddr + ")")
 		}
+		return true, nil
 	
 	} else {
-		// try to interpret is as a domain
-		// Lookup A and AAAA records
-		addresses, err := net.LookupIP(m.Domain)
+		// SPF check
+		// create SPF instance
+		spf, err := gospf.NewSPF(m.Domain, &dns.GoSPFDNS{})
 		if err != nil {
 			return false, err
 		}
-		for _,address := range addresses {
-			if address.Equal(connAddr.IP) {
-				return true, nil
-			}
+		
+		// check the given IP on that instance
+		check, err := spf.CheckIP(connAddr)
+		if err != nil {
+			return false, err
 		}
-	
-		// Lookup SPF reocrds
-		// TODO
+		
+		switch check {
+		case "Fail":
+			return false, errors.New("SPF Fail")
+		default:
+			return true, nil
+		}
+		
 	}
 	
 	return false, errors.New("End of non-void function")
