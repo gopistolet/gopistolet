@@ -33,6 +33,60 @@ var ErrLtl = errors.New("Line too long")
 // ErrIncomplete Incomplete data error
 var ErrIncomplete = errors.New("Incomplete data")
 
+// ReadUntill reads a string that ends with delims. It returns an error if more than maxBytes are read or no delims were found.
+func ReadUntill(delims []byte, maxBytes int, r io.Reader) (string, error) {
+	delimsRead := 0
+	bytesRead := 0
+	result := ""
+
+	buffer := make([]byte, 1)
+	for {
+		if bytesRead >= maxBytes {
+			break
+		}
+
+		if delimsRead >= len(delims) {
+			break
+		}
+
+		n, err := r.Read(buffer)
+		if n > 0 {
+			//fmt.Printf("Read: %v\n", buffer)
+			bytesRead += n
+			if bytesRead > maxBytes {
+				panic("Can't happen...")
+			}
+
+			for _, b := range buffer {
+				if b == delims[delimsRead] {
+					delimsRead++
+				} else {
+					delimsRead = 0
+				}
+			}
+
+			result += string(buffer[0:n])
+		}
+
+		if err != nil {
+			return result, err
+		}
+	}
+
+	if bytesRead > maxBytes {
+		return result, ErrLtl
+	}
+
+	// Only way we get here is:
+	// bytesRead == maxBytes     => if not all delims are read now, then line will be too long.
+	// bytesRead < maxBytes      => only happens if delimsRead >= len(delims), which is ok.
+	if delimsRead != len(delims) {
+		return result, ErrLtl
+	}
+
+	return result, nil
+}
+
 type LimitedReader struct {
 	R     io.Reader // underlying reader
 	N     int       // max bytes remaining
@@ -316,7 +370,7 @@ type Protocol interface {
 	// Receive a command(will block while waiting for it).
 	// Returns false if there are no more commands left. Otherwise a command will be returned.
 	// We need the bool because if we just return nil, the nil will also implement the empty interface...
-	GetCmd() (*Cmd, bool)
+	GetCmd() (*Cmd, error)
 	// Close the connection.
 	Close()
 }
@@ -343,14 +397,15 @@ func (p *MtaProtocol) Send(c Cmd) {
 	fmt.Fprintf(p.c, "%s\r\n", c)
 }
 
-func (p *MtaProtocol) GetCmd() (c *Cmd, ok bool) {
+// GetCmd returns the next command.
+func (p *MtaProtocol) GetCmd() (*Cmd, error) {
 	cmd, err := p.parser.ParseCommand(p.br)
 	if err != nil {
 		log.Printf("Could not parse command: %v", err)
-		return nil, false
+		return nil, err
 	}
 
-	return &cmd, true
+	return &cmd, nil
 }
 
 func (p *MtaProtocol) Close() {

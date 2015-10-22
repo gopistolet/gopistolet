@@ -141,23 +141,23 @@ UNKN some unknown command
 			args []string
 		}{
 			{
-				line: "HELO",
+				line: "HELO\r\n",
 				verb: "HELO",
 			},
 			{
-				line: "HELO relay.example.org",
+				line: "HELO relay.example.org\r\n",
 				verb: "HELO",
 				args: []string{"relay.example.org"},
 			},
 			{
-				line: "MAIL FROM:<bob@example.org>",
+				line: "MAIL FROM:<bob@example.org>\r\n",
 				verb: "MAIL",
 				args: []string{"FROM:<bob@example.org>"},
 			},
 		}
 
 		for _, test := range tests {
-			verb, args, err := parseLine(test.line)
+			verb, args, err := parseLine(strings.NewReader(test.line))
 			So(err, ShouldEqual, nil)
 			So(verb, ShouldEqual, test.verb)
 			So(args, ShouldResemble, test.args)
@@ -172,13 +172,13 @@ UNKN some unknown command
 			addressString string
 		}{
 			{
-				line:          "RCPT TO:<alice@example.com>",
+				line:          "RCPT TO:<alice@example.com>\r\n",
 				addressString: "alice@example.com",
 			},
 		}
 
 		for _, test := range tests {
-			_, args, err := parseLine(test.line)
+			_, args, err := parseLine(strings.NewReader(test.line))
 			So(err, ShouldEqual, nil)
 
 			addr, err := parseTO(args)

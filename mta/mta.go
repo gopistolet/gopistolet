@@ -205,15 +205,32 @@ func (s *Mta) HandleClient(proto smtp.Protocol) {
 	})
 
 	var c *smtp.Cmd
-	var ok bool
+	var err error
 
 	quit := false
 	cmdC := make(chan bool)
 
 	nextCmd := func() bool {
 		go func() {
-			c, ok = proto.GetCmd()
-			cmdC <- true
+			for {
+				c, err = proto.GetCmd()
+
+				if err != nil {
+					if err == smtp.ErrLtl {
+						proto.Send(smtp.Answer{
+							Status:  smtp.SyntaxError,
+							Message: "Line too long.",
+						})
+					} else {
+						// Not a line too long error. What to do?
+						cmdC <- true
+						return
+					}
+				} else {
+					break
+				}
+			}
+			cmdC <- false
 		}()
 
 		select {
@@ -225,8 +242,8 @@ func (s *Mta) HandleClient(proto smtp.Protocol) {
 				})
 				return true
 			}
-		case _ = <-cmdC:
-			return false
+		case q := <-cmdC:
+			return q
 
 		}
 
@@ -235,10 +252,7 @@ func (s *Mta) HandleClient(proto smtp.Protocol) {
 
 	quit = nextCmd()
 
-	for ok == true && quit == false {
-
-		//log.Printf("Received cmd: %#v", *c)
-
+	for quit == false {
 		switch cmd := (*c).(type) {
 		case smtp.HeloCmd:
 			proto.Send(smtp.Answer{

@@ -1,6 +1,9 @@
 package smtp
 
-import "bufio"
+import (
+	"bufio"
+	"io"
+)
 
 import "strings"
 import "errors"
@@ -19,22 +22,17 @@ func (p *parser) ParseCommand(br *bufio.Reader) (command Cmd, err error) {
 		NOT recognize or generate any other character or character sequence
 		as a line terminator.  Limits MAY be imposed on line lengths by
 		servers (see Section 4).
+
+
+		RFC 2821
+		The maximum total length of a command line including the command
+		word and the <CRLF> is 512 characters.  SMTP extensions may be
+		used to increase this limit.
+
 	*/
 
-	line, err := br.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-
-	for line == "" {
-		line, err = br.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	var address *MailAddress
-	verb, args, err := parseLine(line)
+	verb, args, err := parseLine(br)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +154,7 @@ func (p *parser) ParseCommand(br *bufio.Reader) (command Cmd, err error) {
 
 	default:
 		{
-			command = UnknownCmd{Cmd: verb, Line: strings.TrimSuffix(line, "\n")}
+			command = UnknownCmd{Cmd: verb, Line: strings.TrimSuffix(verb, "\n")}
 		}
 
 	}
@@ -165,7 +163,7 @@ func (p *parser) ParseCommand(br *bufio.Reader) (command Cmd, err error) {
 }
 
 // parseLine returns the verb of the line and a list of all comma separated arguments
-func parseLine(line string) (verb string, args []string, err error) {
+func parseLine(r io.Reader) (verb string, args []string, err error) {
 
 	/*
 		RFC 5321
@@ -175,8 +173,18 @@ func parseLine(line string) (verb string, args []string, err error) {
 		and the <CRLF> is 512 octets.  SMTP extensions may be used to
 		increase this limit.
 	*/
-	if len(line) > 512 {
-		return "", []string{}, errors.New("Line too long")
+	line, err := ReadUntill([]byte{'\n'}, 512, r)
+	if err == ErrLtl {
+		// Line too long, so remove this line.
+		tmpErr := ErrLtl
+		for tmpErr == ErrLtl {
+			_, tmpErr = ReadUntill([]byte{'\n'}, 512, r)
+		}
+		if tmpErr != nil {
+			return line, []string{}, tmpErr
+		}
+
+		return line, []string{}, err
 	}
 
 	i := strings.Index(line, " ")

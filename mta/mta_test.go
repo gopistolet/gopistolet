@@ -2,6 +2,7 @@ package mta
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/gopistolet/gopistolet/smtp"
@@ -47,18 +48,18 @@ func (p *testProtocol) Send(cmd smtp.Cmd) {
 	}
 }
 
-func (p *testProtocol) GetCmd() (*smtp.Cmd, bool) {
+func (p *testProtocol) GetCmd() (*smtp.Cmd, error) {
 	p.ctx.So(len(p.cmds), c.ShouldBeGreaterThan, 0)
 
 	cmd := p.cmds[0]
 	p.cmds = p.cmds[1:]
 
 	if cmd == nil {
-		return nil, false
+		return nil, errors.New("No more commands")
 	}
 
 	//c.Printf("SENDING: %#v\n", cmd)
-	return &cmd, true
+	return &cmd, nil
 }
 
 func (p *testProtocol) Close() {
