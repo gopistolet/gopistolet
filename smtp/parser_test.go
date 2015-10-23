@@ -71,7 +71,7 @@ func TestParser(t *testing.T) {
 		So(command, ShouldHaveSameTypeAs, DataCmd{})
 		dataCommand, ok := command.(DataCmd)
 		So(ok, ShouldEqual, true)
-		br2 := bufio.NewReader(dataCommand.R.r)
+		br2 := bufio.NewReader(dataCommand.R.br)
 		line, _ := br2.ReadString('\n')
 		So(line, ShouldEqual, "Some usefull data.\r\n")
 		line, _ = br2.ReadString('\n')
