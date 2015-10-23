@@ -175,6 +175,10 @@ func parseLine(r *bufio.Reader) (verb string, args []string, err error) {
 		return line, []string{}, err
 	}
 
+	// Strip \n and \r
+	line = strings.TrimSuffix(line, "\n")
+	line = strings.TrimSuffix(line, "\r")
+
 	i := strings.Index(line, " ")
 	if i == -1 {
 		verb = strings.ToUpper(strings.TrimSpace(line))

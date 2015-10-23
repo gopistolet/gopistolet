@@ -12,21 +12,20 @@ import (
 func TestParser(t *testing.T) {
 
 	Convey("Testing parser", t, func() {
-		commands :=
-			`HELO relay.example.org
-EHLO other.example.org
-MAIL FROM:<bob@example.org>
-RCPT TO:<alice@example.com>
-RCPT TO:<theboss@example.com>
-SEND
-SOML
-SAML
-RSET
-VRFY jones
-EXPN staff
-NOOP
-QUIT
-`
+		commands := ""
+		commands += "HELO relay.example.org\r\n"
+		commands += "EHLO other.example.org\r\n"
+		commands += "MAIL FROM:<bob@example.org>\r\n"
+		commands += "RCPT TO:<alice@example.com>\r\n"
+		commands += "RCPT TO:<theboss@example.com>\r\n"
+		commands += "SEND\r\n"
+		commands += "SOML\r\n"
+		commands += "SAML\r\n"
+		commands += "RSET\r\n"
+		commands += "VRFY jones\r\n"
+		commands += "EXPN staff\r\n"
+		commands += "NOOP\r\n"
+		commands += "QUIT\r\n"
 
 		br := bufio.NewReader(strings.NewReader(commands))
 
@@ -49,6 +48,7 @@ QUIT
 		}
 
 		for _, expectedCommand := range expectedCommands {
+			Print(expectedCommand)
 			command, err := p.ParseCommand(br)
 			So(err, ShouldEqual, nil)
 			So(command, ShouldResemble, expectedCommand)
@@ -57,12 +57,11 @@ QUIT
 	})
 
 	Convey("Testing parser DATA cmd", t, func() {
-		commands :=
-			`DATA
-Some usefull data.
-.
-quit
-`
+		commands := ""
+		commands += "DATA\r\n"
+		commands += "Some usefull data.\r\n"
+		commands += ".\r\n"
+		commands += "quit\r\n"
 
 		br := bufio.NewReader(strings.NewReader(commands))
 		p := parser{}
@@ -70,10 +69,13 @@ quit
 		command, err := p.ParseCommand(br)
 		So(err, ShouldEqual, nil)
 		So(command, ShouldHaveSameTypeAs, DataCmd{})
-
-		dcmd, _ := command.(DataCmd)
-		br2 := bufio.NewReader(&dcmd.R)
-		br2.ReadString('\n')
+		dataCommand, ok := command.(DataCmd)
+		So(ok, ShouldEqual, true)
+		br2 := bufio.NewReader(dataCommand.R.r)
+		line, _ := br2.ReadString('\n')
+		So(line, ShouldEqual, "Some usefull data.\r\n")
+		line, _ = br2.ReadString('\n')
+		So(line, ShouldEqual, ".\r\n")
 
 		command, err = p.ParseCommand(br)
 		So(err, ShouldEqual, nil)
@@ -83,22 +85,22 @@ quit
 
 	Convey("Testing parser with invalid commands", t, func() {
 
-		commands := `RCPT
-helo
-ehlo
-
-  
-RCPT TO:some invalid email
-rcpt :valid@mail.be
-RCPT :valid@mail.be
-RCPT TA:valid@mail.be
-MAIL
-MAIL from:some invalid email
-MAIL :valid@mail.be
-MAIL FROA:valid@mail.be
-MAIL To some@invalid
-UNKN some unknown command
-`
+		commands := ""
+		commands += "RCPT\r\n"
+		commands += "helo\r\n"
+		commands += "ehlo\r\n"
+		commands += "\r\n"
+		commands += "  \r\n"
+		commands += "RCPT TO:some invalid email\r\n"
+		commands += "rcpt :valid@mail.be\r\n"
+		commands += "RCPT :valid@mail.be\r\n"
+		commands += "RCPT TA:valid@mail.be\r\n"
+		commands += "MAIL\r\n"
+		commands += "MAIL from:some invalid email\r\n"
+		commands += "MAIL :valid@mail.be\r\n"
+		commands += "MAIL FROA:valid@mail.be\r\n"
+		commands += "MAIL To some@invalid\r\n"
+		commands += "UNKN some unknown command\r\n"
 
 		br := bufio.NewReader(strings.NewReader(commands))
 
@@ -150,6 +152,16 @@ UNKN some unknown command
 				line: "MAIL FROM:<bob@example.org>\r\n",
 				verb: "MAIL",
 				args: []string{"FROM:<bob@example.org>"},
+			},
+			{
+				line: "HELO some_ctrl_char\r\n",
+				verb: "HELO",
+				args: []string{"some_ctrl_char"},
+			},
+			{
+				line: "HELO some_ctrl_char\n",
+				verb: "HELO",
+				args: []string{"some_ctrl_char"},
 			},
 		}
 
