@@ -1,6 +1,7 @@
 package mta
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"testing"
@@ -220,7 +221,7 @@ func TestMailAnswersCorrectSequence(t *testing.T) {
 					To: getMailWithoutError("guy2@somewhere.test"),
 				},
 				smtp.DataCmd{
-					R: *smtp.NewDataReader(bytes.NewReader([]byte("Some test email\n.\n"))),
+					R: *smtp.NewDataReader(bufio.NewReader(bytes.NewReader([]byte("Some test email\n.\n")))),
 				},
 				smtp.QuitCmd{},
 			},
@@ -451,7 +452,7 @@ func TestReset(t *testing.T) {
 						To: getMailWithoutError("guy1@somewhere.test"),
 					},
 					smtp.DataCmd{
-						R: *smtp.NewDataReader(bytes.NewReader([]byte("Some email content\n.\n"))),
+						R: *smtp.NewDataReader(bufio.NewReader(bytes.NewReader([]byte("Some email content\n.\n")))),
 					},
 					smtp.RcptCmd{
 						To: getMailWithoutError("someguy@somewhere.test"),
@@ -518,7 +519,7 @@ func TestReset(t *testing.T) {
 						To: getMailWithoutError("guy1@somewhere.test"),
 					},
 					smtp.DataCmd{
-						R: *smtp.NewDataReader(bytes.NewReader([]byte("Some email\n.\n"))),
+						R: *smtp.NewDataReader(bufio.NewReader(bytes.NewReader([]byte("Some email\n.\n")))),
 					},
 					smtp.QuitCmd{},
 				},
@@ -593,7 +594,7 @@ func TestReset(t *testing.T) {
 						To: getMailWithoutError("guy1@somewhere.test"),
 					},
 					smtp.DataCmd{
-						R: *smtp.NewDataReader(bytes.NewReader([]byte("Some email\n.\n"))),
+						R: *smtp.NewDataReader(bufio.NewReader(bytes.NewReader([]byte("Some email\n.\n")))),
 					},
 					smtp.QuitCmd{},
 				},

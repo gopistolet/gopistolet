@@ -1,9 +1,6 @@
 package smtp
 
-import (
-	"bufio"
-	"io"
-)
+import "bufio"
 
 import "strings"
 import "errors"
@@ -163,7 +160,7 @@ func (p *parser) ParseCommand(br *bufio.Reader) (command Cmd, err error) {
 }
 
 // parseLine returns the verb of the line and a list of all comma separated arguments
-func parseLine(r io.Reader) (verb string, args []string, err error) {
+func parseLine(r *bufio.Reader) (verb string, args []string, err error) {
 
 	/*
 		RFC 5321
@@ -173,17 +170,8 @@ func parseLine(r io.Reader) (verb string, args []string, err error) {
 		and the <CRLF> is 512 octets.  SMTP extensions may be used to
 		increase this limit.
 	*/
-	line, err := ReadUntill([]byte{'\n'}, 512, r)
-	if err == ErrLtl {
-		// Line too long, so remove this line.
-		tmpErr := ErrLtl
-		for tmpErr == ErrLtl {
-			_, tmpErr = ReadUntill([]byte{'\n'}, 512, r)
-		}
-		if tmpErr != nil {
-			return line, []string{}, tmpErr
-		}
-
+	line, err := r.ReadString('\n')
+	if err != nil {
 		return line, []string{}, err
 	}
 

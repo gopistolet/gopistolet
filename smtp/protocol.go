@@ -7,7 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
+	"net/textproto"
 )
 
 type StatusCode uint32
@@ -37,10 +37,9 @@ var ErrIncomplete = errors.New("Incomplete data")
 
 type UntillReader struct {
 	Delims     []byte
-	MaxBytes   int
-	R          io.Reader
+	N          int
+	R          *bufio.Reader
 	delimsRead int
-	bytesRead  int
 }
 
 func (u *UntillReader) Read(p []byte) (n int, err error) {
@@ -50,10 +49,10 @@ func (u *UntillReader) Read(p []byte) (n int, err error) {
 
 	lr := io.LimitedReader{
 		R: u.R,
-		N: int64(u.MaxBytes - u.bytesRead),
+		N: int64(u.N),
 	}
 
-	for u.bytesRead < u.MaxBytes && u.delimsRead < len(u.Delims) && n < len(p) {
+	for u.N > 0 && u.delimsRead < len(u.Delims) && n < len(p) {
 		nb, err := lr.Read(p[n : n+1])
 		if nb == 1 {
 			if u.Delims[u.delimsRead] == p[n] {
@@ -62,7 +61,7 @@ func (u *UntillReader) Read(p []byte) (n int, err error) {
 				u.delimsRead = 0
 			}
 
-			u.bytesRead++
+			u.N--
 			n++
 
 			if u.delimsRead == len(u.Delims) {
@@ -82,9 +81,9 @@ func (u *UntillReader) Read(p []byte) (n int, err error) {
 		}
 	}
 
-	if u.bytesRead == u.MaxBytes {
+	if u.N == 0 {
 		if u.delimsRead != len(u.Delims) {
-			return n, ErrNoDelims
+			return n, ErrLtl
 		}
 	}
 
@@ -102,54 +101,24 @@ func (u *UntillReader) Read(p []byte) (n int, err error) {
 }
 
 // ReadUntill reads a string that ends with delims. It returns an error if more than maxBytes are read or no delims were found.
-func ReadUntill(delims []byte, maxBytes int, r io.Reader) (string, error) {
-	delimsRead := 0
-	bytesRead := 0
+func ReadUntill(delims []byte, maxBytes int, r *bufio.Reader) (string, error) {
+	ru := UntillReader{
+		R:      r,
+		N:      maxBytes,
+		Delims: delims,
+	}
+
 	result := ""
-
-	buffer := make([]byte, 1)
+	buffer := make([]byte, 64)
 	for {
-		if bytesRead >= maxBytes {
-			break
-		}
-
-		if delimsRead >= len(delims) {
-			break
-		}
-
-		n, err := r.Read(buffer)
-		if n > 0 {
-			//fmt.Printf("Read: %v\n", buffer)
-			bytesRead += n
-			if bytesRead > maxBytes {
-				panic("Can't happen...")
-			}
-
-			for _, b := range buffer {
-				if b == delims[delimsRead] {
-					delimsRead++
-				} else {
-					delimsRead = 0
-				}
-			}
-
-			result += string(buffer[0:n])
-		}
-
+		n, err := ru.Read(buffer)
+		result += string(buffer[0:n])
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return result, err
 		}
-	}
-
-	if bytesRead > maxBytes {
-		return result, ErrLtl
-	}
-
-	// Only way we get here is:
-	// bytesRead == maxBytes     => if not all delims are read now, then line will be too long.
-	// bytesRead < maxBytes      => only happens if delimsRead >= len(delims), which is ok.
-	if delimsRead != len(delims) {
-		return result, ErrLtl
 	}
 
 	return result, nil
@@ -199,35 +168,20 @@ const (
 
 // DataReader implements the reader that will read the data from a MAIL cmd
 type DataReader struct {
-	r      io.Reader
-	buffer []byte
+	br *bufio.Reader
 }
 
-func NewDataReader(r io.Reader) *DataReader {
+func NewDataReader(br *bufio.Reader) *DataReader {
 	dr := &DataReader{
-		r:      r,
-		buffer: make([]byte, 0, MAX_LINE),
+		br: br,
 	}
 
 	return dr
 }
 
 func (r *DataReader) Read(p []byte) (int, error) {
-	var err error
-	var data string
-	for {
-		data, err = ReadUntill([]byte{'\n'}, MAX_LINE+1, r.r)
-		if err != nil {
-			return 0, err
-		}
-
-		if strings.HasSuffix(data, ".\r\n") || strings.HasSuffix(data, ".\n") {
-			return 0, io.EOF
-		}
-
-		p = append(p, []byte(data)...)
-	}
-
+	dr := textproto.NewReader(r.br).DotReader()
+	return dr.Read(p)
 }
 
 // Cmd All SMTP answers/commands should implement this interface.
@@ -400,6 +354,7 @@ type Protocol interface {
 
 type MtaProtocol struct {
 	c      net.Conn
+	lr     *io.LimitedReader
 	br     *bufio.Reader
 	parser parser
 }
@@ -409,9 +364,10 @@ type MtaProtocol struct {
 func NewMtaProtocol(c net.Conn) *MtaProtocol {
 	proto := &MtaProtocol{
 		c:      c,
-		br:     bufio.NewReader(c),
+		lr:     &io.LimitedReader{R: c, N: MAX_LINE},
 		parser: parser{},
 	}
+	proto.br = bufio.NewReader(proto.lr)
 
 	return proto
 }
@@ -420,10 +376,49 @@ func (p *MtaProtocol) Send(c Cmd) {
 	fmt.Fprintf(p.c, "%s\r\n", c)
 }
 
+func (p *MtaProtocol) SkipTillNewline() error {
+	LIMIT := 1024
+	for {
+
+		p.lr.N = int64(LIMIT)
+		_, err := p.br.ReadBytes('\n')
+		if err == io.EOF {
+			// EOF didn't come from the limitedreader.
+			if p.lr.N > 0 {
+				return err
+			}
+
+			// Could be from limitedreader but also from underlying reader.
+			// If EOF came from limitedreader, it will be reset in the next iteration.
+			// Otherwise we will get in the if above in the next iteration.
+			continue
+		}
+
+		// Can't handle this error...
+		if err != nil {
+			return err
+		}
+
+		// No error, so we've read untill a newline.
+		return nil
+	}
+}
+
 // GetCmd returns the next command.
 func (p *MtaProtocol) GetCmd() (*Cmd, error) {
+	p.lr.N = int64(512)
 	cmd, err := p.parser.ParseCommand(p.br)
 	if err != nil {
+		// Line too long.
+		if err == io.EOF && p.lr.N == 0 {
+			log.Printf("Line is too long")
+			skipErr := p.SkipTillNewline()
+			if skipErr != nil {
+				return nil, skipErr
+			}
+
+			return nil, ErrLtl
+		}
 		log.Printf("Could not parse command: %v", err)
 		return nil, err
 	}

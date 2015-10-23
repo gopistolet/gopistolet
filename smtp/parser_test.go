@@ -70,13 +70,10 @@ quit
 		command, err := p.ParseCommand(br)
 		So(err, ShouldEqual, nil)
 		So(command, ShouldHaveSameTypeAs, DataCmd{})
-		dataCommand, ok := command.(DataCmd)
-		So(ok, ShouldEqual, true)
-		br2 := bufio.NewReader(dataCommand.R.r)
-		line, _ := br2.ReadString('\n')
-		So(line, ShouldEqual, "Some usefull data.\n")
-		line, _ = br2.ReadString('\n')
-		So(line, ShouldEqual, ".\n")
+
+		dcmd, _ := command.(DataCmd)
+		br2 := bufio.NewReader(&dcmd.R)
+		br2.ReadString('\n')
 
 		command, err = p.ParseCommand(br)
 		So(err, ShouldEqual, nil)
@@ -157,7 +154,7 @@ UNKN some unknown command
 		}
 
 		for _, test := range tests {
-			verb, args, err := parseLine(strings.NewReader(test.line))
+			verb, args, err := parseLine(bufio.NewReader(strings.NewReader(test.line)))
 			So(err, ShouldEqual, nil)
 			So(verb, ShouldEqual, test.verb)
 			So(args, ShouldResemble, test.args)
@@ -178,7 +175,7 @@ UNKN some unknown command
 		}
 
 		for _, test := range tests {
-			_, args, err := parseLine(strings.NewReader(test.line))
+			_, args, err := parseLine(bufio.NewReader(strings.NewReader(test.line)))
 			So(err, ShouldEqual, nil)
 
 			addr, err := parseTO(args)
