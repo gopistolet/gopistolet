@@ -2,7 +2,7 @@
 // in order to ensure substitutability with other libraries
 package log
 
-import "github.com/Sirupsen/logrus"
+import "github.com/sirupsen/logrus"
 
 // Level type
 type Level uint8

@@ -2,3 +2,4 @@ gopistolet
 config.json
 maildir
 !handlers/maildir
+.DS_Store
