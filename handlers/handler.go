@@ -22,7 +22,7 @@ type HandlerMachanism struct {
 }
 
 func (h *HandlerMachanism) Handle(state *smtp.State) {
-    for _, handler := range h.Handlers {
-        handler.Handle(state)
-    }
+	for _, handler := range h.Handlers {
+		handler.Handle(state)
+	}
 }
